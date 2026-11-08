@@ -1,6 +1,6 @@
 
 import {createClient} from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.80.0/+esm";
-const db=createClient("https://bkbvgnckoiypdwappktn.supabase.co","sb_publishable_j0_8kuzGVr53OiGV3r9KgQ_bSEKdhrQ_bSEKdhrQ".replace("_bSEKdhrQ_bSEKdhrQ","_bSEKdhrQ"),{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+const db=createClient("https://bkbvgnckoiypdwappktn.supabase.co","sb_publishable_j0_8kuzGVr53OiGV3r9KgQ_bSEKdhrQ",{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
 const $=s=>document.querySelector(s), money=n=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(Number(n)||0);
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const today=()=>{let d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-")};
@@ -29,6 +29,12 @@ async function load(){
  const tables=["finance_accounts","finance_categories","finance_payees","finance_transactions","finance_transaction_splits","finance_bills","finance_bill_occurrences","finance_settings"];
  const data=await Promise.all(tables.map(t=>api(db.from(t).select("*"))));
  [state.accounts,state.categories,state.payees,state.tx,state.splits,state.bills,state.occ]=data;
+ if(!state.categories.length){
+   const starter=[["Groceries","expense"],["Restaurants","expense"],["Gas","expense"],["Utilities","expense"],["Housing","expense"],["Insurance","expense"],["Shopping","expense"],["Entertainment","expense"],["Household","expense"],["Medical","expense"],["Other Expense","expense"],["Paycheck","income"],["Refund","income"],["Other Income","income"]];
+   const seeded=await api(db.from("finance_categories").insert(starter.map(([name,kind])=>({name,kind,user_id:uid()}))).select("*"));
+   state.categories=seeded;
+ }
+
  state.settings=data[7][0]||null;
  render();
 }
@@ -74,7 +80,7 @@ function filterTx(){
 function renderTransactions(){
  const f=state.filter,selected=filterTx(),income=selected.filter(t=>t.kind==="income").reduce((a,t)=>a+Number(t.amount),0),out=selected.filter(t=>t.kind==="expense").reduce((a,t)=>a+Number(t.amount),0);
  const ranges=[["today","Today"],["7","Last 7 Days"],["30","Last 30 Days"],["custom","Custom Date Range"],["all","All Dates"]];
- $("#transactions").innerHTML='<div class="card"><div class="filterbar"><label>Search Payee<input data-filter="payee" value="'+esc(f.payee)+'" placeholder="Payee name"></label><label>Date Range<select data-filter="range">'+ranges.map(([v,t])=>'<option value="'+v+'" '+(v===f.range?"selected":"")+'>'+t+'</option>').join("")+'</select></label><label>Type<select data-filter="kind">'+[["all","All"],["expense","Expense"],["income","Income"],["transfer","Transfer"],["adjustment","Adjustment"]].map(([v,t])=>'<option value="'+v+'" '+(f.kind===v?"selected":"")+'>'+t+'</option>').join("")+'</select></label><label>Account<select data-filter="account"><option value="all">All</option>'+options(state.accounts.map(a=>({id:a.id,name:a.name})),f.account)+'</select></label><label>Category<select data-filter="category"><option value="all">All</option>'+options(state.categories,f.category)+'</select></label></div>'+(f.range==="custom"?'<div class="split" style="margin-top:10px"><label>From<input type="date" data-filter="from" value="'+f.from+'"></label><label>To<input type="date" data-filter="to" value="'+f.to+'"></label></div>':"")+'</div><div class="metrics"><div class="metric"><small>Income</small><strong>'+money(income)+'</strong></div><div class="metric"><small>Expenses</small><strong>'+money(out)+'</strong></div></div><div class="card" style="margin-top:15px"><div class="sectionTitle"><h2>'+selected.length+' Transactions</h2><button class="secondary" id="exportCSV">Export CSV</button></div>'+(selected.length?selected.map(t=>row(t.payee_name||nameOf(t.payee_id,state.payees)||t.kind,fmt(t.transaction_date)+" · "+nameOf(t.account_id,state.accounts)+" · "+nameOf(t.category_id,state.categories),'<span class="'+(t.kind==="income"?"positive":"")+'">'+(t.kind==="income"?"+":t.kind==="expense"?"−":"")+money(t.amount)+'</span>','<button class="secondary" data-edit-tx="'+t.id+'">Edit</button>')).join(""):'<p class="empty">No matching transactions.</p>')+'</div>';
+ $("#transactions").innerHTML='<div class="card"><div class="filterbar"><label>Search Payee<input data-filter="payee" value="'+esc(f.payee)+'" placeholder="Payee name"></label><label>Date Range<select data-filter="range">'+ranges.map(([v,t])=>'<option value="'+v+'" '+(v===f.range?"selected":"")+'>'+t+'</option>').join("")+'</select></label><label>Type<select data-filter="kind">'+[["all","All"],["expense","Expense"],["income","Income"],["transfer","Transfer"],["adjustment","Adjustment"]].map(([v,t])=>'<option value="'+v+'" '+(f.kind===v?"selected":"")+'>'+t+'</option>').join("")+'</select></label><label>Account<select data-filter="account"><option value="all">All</option>'+options(state.accounts.map(a=>({id:a.id,name:a.name})),f.account)+'</select></label><label>Category<select data-filter="category"><option value="all">All</option>'+options(state.categories,f.category)+'</select></label></div>'+(f.range==="custom"?'<div class="split" style="margin-top:10px"><label>From<input type="date" data-filter="from" value="'+f.from+'"></label><label>To<input type="date" data-filter="to" value="'+f.to+'"></label></div>':"")+'</div><div class="flex" style="justify-content:flex-end;margin-bottom:10px"><button class="secondary" id="addCategory">+ Category</button></div><div class="metrics"><div class="metric"><small>Income</small><strong>'+money(income)+'</strong></div><div class="metric"><small>Expenses</small><strong>'+money(out)+'</strong></div></div><div class="card" style="margin-top:15px"><div class="sectionTitle"><h2>'+selected.length+' Transactions</h2><button class="secondary" id="exportCSV">Export CSV</button></div>'+(selected.length?selected.map(t=>row(t.payee_name||nameOf(t.payee_id,state.payees)||t.kind,fmt(t.transaction_date)+" · "+nameOf(t.account_id,state.accounts)+" · "+nameOf(t.category_id,state.categories),'<span class="'+(t.kind==="income"?"positive":"")+'">'+(t.kind==="income"?"+":t.kind==="expense"?"−":"")+money(t.amount)+'</span>','<button class="secondary" data-edit-tx="'+t.id+'">Edit</button>')).join(""):'<p class="empty">No matching transactions.</p>')+'</div>';
 }
 function billStatus(o){const left=days(o.due_date,today());return o.status==="paid"?"Paid":o.status==="skipped"?"Skipped":left<0?"Overdue":left===0?"Due today":left<=5?"Due in "+left+" days":"Upcoming"}
 function renderBills(){
@@ -124,6 +130,11 @@ function accountEditor(a=null){
  const row={name:val(f,"name"),kind:val(f,"kind"),opening_balance:Number(val(f,"opening_balance")),opening_date:val(f,"opening_date"),credit_limit:val(f,"credit_limit")?numeric(f,"credit_limit"):null};
  if(!row.name||!Number.isFinite(row.opening_balance))throw Error("Enter a valid account name and opening balance");
  if(a)await change("finance_accounts",a.id,row);else await save("finance_accounts",row);
+ });
+}
+function categoryEditor(){
+ openEditor("Add Category",field("Category Name","name","text","","required maxlength=100")+selectField("Category Type","kind",[{id:"expense",name:"Expense"},{id:"income",name:"Income"}],"expense"),async f=>{
+  const name=val(f,"name"),kind=val(f,"kind");if(!name)throw Error("Enter a category name");await save("finance_categories",{name,kind});
  });
 }
 function transactionEditor(t=null){
@@ -200,6 +211,7 @@ document.addEventListener("click",async e=>{
  if(b.dataset.editBill){billEditor(state.bills.find(x=>x.id===b.dataset.editBill));return}
  if(b.dataset.payBill){payBillEditor(state.occ.find(x=>x.id===b.dataset.payBill));return}
  if(b.id==="exportCSV"){exportCSV();return}
+ if(b.id==="addCategory"){categoryEditor();return}
 });
 document.addEventListener("change",e=>{
  const filter=e.target.dataset.filter,rep=e.target.dataset.report;
