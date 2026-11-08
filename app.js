@@ -1,0 +1,215 @@
+
+import {createClient} from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.80.0/+esm";
+const db=createClient("https://bkbvgnckoiypdwappktn.supabase.co","sb_publishable_j0_8kuzGVr53OiGV3r9KgQ_bSEKdhrQ_bSEKdhrQ".replace("_bSEKdhrQ_bSEKdhrQ","_bSEKdhrQ"),{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+const $=s=>document.querySelector(s), money=n=>new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(Number(n)||0);
+const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const today=()=>{let d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-")};
+const fmt=s=>s?String(s).slice(5,7)+"-"+String(s).slice(8,10)+"-"+String(s).slice(0,4):"";
+const days=(a,b)=>Math.round((Date.parse(a+"T12:00:00")-Date.parse(b+"T12:00:00"))/86400000);
+const uid=()=>state.user?.id;
+const state={user:null,tab:"dashboard",accounts:[],categories:[],payees:[],tx:[],splits:[],bills:[],occ:[],settings:null,filter:{range:"30",payee:"",account:"all",category:"all",kind:"all",from:today(),to:today()},report:{monthA:"",monthB:"",group:"category"}};
+const options=(arr,selected)=>arr.map(a=>'<option value="'+esc(a.id)+'" '+(a.id===selected?"selected":"")+'>'+esc(a.name)+'</option>').join("");
+const categories=kind=>state.categories.filter(c=>c.kind===kind&&!c.archived);
+const activeAccounts=()=>state.accounts.filter(a=>!a.archived);
+const nameOf=(id,list)=>list.find(x=>x.id===id)?.name||"—";
+const balance=a=>{
+ let n=Number(a.opening_balance);
+ for(const t of state.tx){
+  if(t.account_id===a.id){if(t.kind==="income")n+=Number(t.amount);else if(t.kind==="expense")n-=Number(t.amount);else if(t.kind==="transfer")n-=Number(t.amount);else if(t.kind==="adjustment")n+=Number(t.amount)*(t.notes==="negative"?-1:1);}
+  if(t.kind==="transfer"&&t.destination_account_id===a.id)n+=Number(t.amount);
+ }
+ return Math.round(n*100)/100;
+};
+const cash=()=>state.accounts.filter(a=>a.kind!=="credit_card").reduce((n,a)=>n+balance(a),0);
+const debt=()=>state.accounts.filter(a=>a.kind==="credit_card").reduce((n,a)=>n+Math.max(0,-balance(a)),0);
+const titleCase=t=>({dashboard:"Overview",accounts:"My Accounts",transactions:"Transaction History",bills:"Upcoming Bills",reports:"Reports"}[t]);
+function message(msg,error=false){const el=$("#message");el.textContent=msg;el.className="notice"+(error?" error":"");setTimeout(()=>{if(el.textContent===msg)el.classList.add("hidden")},5500)}
+async function api(promise){const {data,error}=await promise;if(error)throw error;return data}
+async function load(){
+ const tables=["finance_accounts","finance_categories","finance_payees","finance_transactions","finance_transaction_splits","finance_bills","finance_bill_occurrences","finance_settings"];
+ const data=await Promise.all(tables.map(t=>api(db.from(t).select("*"))));
+ [state.accounts,state.categories,state.payees,state.tx,state.splits,state.bills,state.occ]=data;
+ state.settings=data[7][0]||null;
+ render();
+}
+async function save(table,row){return api(db.from(table).insert({...row,user_id:uid()}).select().single())}
+async function change(table,id,fields){return api(db.from(table).update(fields).eq("id",id).eq("user_id",uid()).select().single())}
+function showTab(tab){state.tab=tab;render()}
+function render(){
+ $("#auth").classList.toggle("hidden",!!uid());$("#app").classList.toggle("hidden",!uid());$("#signout").classList.toggle("hidden",!uid());
+ if(!uid())return;
+ $("#pageTitle").textContent=titleCase(state.tab);
+ document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===state.tab));
+ document.querySelectorAll(".page").forEach(s=>s.classList.toggle("hidden",s.id!==state.tab));
+ $("#addBtn").textContent=state.tab==="accounts"?"+ Account":state.tab==="bills"?"+ Bill":"+ Transaction";
+ $("#addBtn").classList.toggle("hidden",state.tab==="reports");
+ renderDashboard();renderAccounts();renderTransactions();renderBills();renderReports();
+}
+const row=(name,subtitle,value,extra="")=>'<div class="rowitem"><div><strong>'+esc(name)+'</strong><small>'+esc(subtitle)+'</small></div><div class="right"><strong>'+value+'</strong>'+extra+'</div></div>';
+function renderDashboard(){
+ const now=today(),next=state.occ.filter(o=>o.status!=="paid"&&o.status!=="skipped"&&days(o.due_date,now)<=30);
+ const owing=next.reduce((s,o)=>s+Math.max(0,Number(o.amount_due)-Number(o.amount_paid)),0);
+ const last=state.tx.filter(t=>days(now,t.transaction_date)>=0&&days(now,t.transaction_date)<30);
+ const inc=last.filter(t=>t.kind==="income").reduce((s,t)=>s+Number(t.amount),0);
+ const spent=last.filter(t=>t.kind==="expense").reduce((s,t)=>s+Number(t.amount),0);
+ const urgent=next.filter(o=>days(o.due_date,now)<=5).sort((a,b)=>a.due_date.localeCompare(b.due_date));
+ $("#dashboard").innerHTML='<div class="metrics"><div class="metric"><small>Available Cash</small><strong>'+money(cash())+'</strong></div><div class="metric"><small>Credit Card Debt</small><strong>'+money(debt())+'</strong></div><div class="metric"><small>Income · Last 30 Days</small><strong>'+money(inc)+'</strong></div><div class="metric"><small>Expenses · Last 30 Days</small><strong>'+money(spent)+'</strong></div></div><div class="twocol"><div class="card" style="margin-top:15px"><h2>Upcoming Bills</h2><p class="muted">Due or overdue through the next 30 days: <strong>'+money(owing)+'</strong></p><p>Cash after listed bills: <strong>'+money(cash()-owing)+'</strong></p>'+(urgent.length?urgent.slice(0,6).map(o=>row(nameOf(o.bill_id,state.bills),fmt(o.due_date),money(Number(o.amount_due)-Number(o.amount_paid)), '<div class="pill '+(days(o.due_date,now)<0?"overdue":"")+'">'+(days(o.due_date,now)<0?"Overdue":days(o.due_date,now)===0?"Due today":"Due in "+days(o.due_date,now)+" days")+'</div>')).join(""):'<p class="empty">No bills due within 5 days.</p>')+'</div><div class="card" style="margin-top:15px"><h2>Recent Transactions</h2>'+state.tx.slice().sort((a,b)=>b.transaction_date.localeCompare(a.transaction_date)).slice(0,6).map(t=>row(t.payee_name||nameOf(t.payee_id,state.payees)||t.kind,fmt(t.transaction_date)+" · "+nameOf(t.account_id,state.accounts), (t.kind==="income"?"+":t.kind==="expense"?"−":"")+money(t.amount))).join("")+'<button class="secondary" data-go="transactions">See all transactions</button></div></div>';
+}
+function renderAccounts(){
+ const ac=activeAccounts(),groups=[["BANK & CASH ACCOUNTS",ac.filter(a=>a.kind!=="credit_card")],["CREDIT CARDS",ac.filter(a=>a.kind==="credit_card")]];
+ $("#accounts").innerHTML='<div class="metrics"><div class="metric"><small>Available Cash</small><strong>'+money(cash())+'</strong></div><div class="metric"><small>Credit Card Debt</small><strong>'+money(debt())+'</strong></div></div>'+groups.map(([label,list])=>'<div class="card" style="margin-top:15px"><h2>'+label+'</h2>'+(list.length?list.map(a=>'<div class="rowitem"><div><strong>'+esc(a.name)+'</strong><small>'+esc(a.kind.replace("_"," "))+'</small></div><div class="right"><strong>'+money(a.kind==="credit_card"?Math.max(0,-balance(a)):balance(a))+(a.kind==="credit_card"?" owed":"")+'</strong><button class="secondary" data-edit-account="'+esc(a.id)+'">Edit</button></div></div>').join(""):'<p class="empty">No accounts yet. Add your first account.</p>')+'</div>').join("");
+}
+function filterTx(){
+ let f=state.filter,now=today();
+ return state.tx.filter(t=>{
+  const dd=days(now,t.transaction_date);
+  let valid=f.range==="all"||(f.range==="today"&&dd===0)||(f.range==="7"&&dd>=0&&dd<7)||(f.range==="30"&&dd>=0&&dd<30)||(f.range==="custom"&&t.transaction_date>=f.from&&t.transaction_date<=f.to);
+  if(f.kind!=="all"&&t.kind!==f.kind)valid=false;
+  if(f.account!=="all"&&t.account_id!==f.account&&t.destination_account_id!==f.account)valid=false;
+  if(f.payee&&!String(t.payee_name||nameOf(t.payee_id,state.payees)).toLowerCase().includes(f.payee.toLowerCase()))valid=false;
+  if(f.category!=="all"&&t.category_id!==f.category&&!state.splits.some(s=>s.transaction_id===t.id&&s.category_id===f.category))valid=false;
+  return valid;
+ }).sort((a,b)=>b.transaction_date.localeCompare(a.transaction_date)||b.created_at.localeCompare(a.created_at));
+}
+function renderTransactions(){
+ const f=state.filter,selected=filterTx(),income=selected.filter(t=>t.kind==="income").reduce((a,t)=>a+Number(t.amount),0),out=selected.filter(t=>t.kind==="expense").reduce((a,t)=>a+Number(t.amount),0);
+ const ranges=[["today","Today"],["7","Last 7 Days"],["30","Last 30 Days"],["custom","Custom Date Range"],["all","All Dates"]];
+ $("#transactions").innerHTML='<div class="card"><div class="filterbar"><label>Search Payee<input data-filter="payee" value="'+esc(f.payee)+'" placeholder="Payee name"></label><label>Date Range<select data-filter="range">'+ranges.map(([v,t])=>'<option value="'+v+'" '+(v===f.range?"selected":"")+'>'+t+'</option>').join("")+'</select></label><label>Type<select data-filter="kind">'+[["all","All"],["expense","Expense"],["income","Income"],["transfer","Transfer"],["adjustment","Adjustment"]].map(([v,t])=>'<option value="'+v+'" '+(f.kind===v?"selected":"")+'>'+t+'</option>').join("")+'</select></label><label>Account<select data-filter="account"><option value="all">All</option>'+options(state.accounts.map(a=>({id:a.id,name:a.name})),f.account)+'</select></label><label>Category<select data-filter="category"><option value="all">All</option>'+options(state.categories,f.category)+'</select></label></div>'+(f.range==="custom"?'<div class="split" style="margin-top:10px"><label>From<input type="date" data-filter="from" value="'+f.from+'"></label><label>To<input type="date" data-filter="to" value="'+f.to+'"></label></div>':"")+'</div><div class="metrics"><div class="metric"><small>Income</small><strong>'+money(income)+'</strong></div><div class="metric"><small>Expenses</small><strong>'+money(out)+'</strong></div></div><div class="card" style="margin-top:15px"><div class="sectionTitle"><h2>'+selected.length+' Transactions</h2><button class="secondary" id="exportCSV">Export CSV</button></div>'+(selected.length?selected.map(t=>row(t.payee_name||nameOf(t.payee_id,state.payees)||t.kind,fmt(t.transaction_date)+" · "+nameOf(t.account_id,state.accounts)+" · "+nameOf(t.category_id,state.categories),'<span class="'+(t.kind==="income"?"positive":"")+'">'+(t.kind==="income"?"+":t.kind==="expense"?"−":"")+money(t.amount)+'</span>','<button class="secondary" data-edit-tx="'+t.id+'">Edit</button>')).join(""):'<p class="empty">No matching transactions.</p>')+'</div>';
+}
+function billStatus(o){const left=days(o.due_date,today());return o.status==="paid"?"Paid":o.status==="skipped"?"Skipped":left<0?"Overdue":left===0?"Due today":left<=5?"Due in "+left+" days":"Upcoming"}
+function renderBills(){
+ const list=state.occ.slice().sort((a,b)=>{
+  const aa=["unpaid","partial"].includes(a.status),bb=["unpaid","partial"].includes(b.status);
+  return (aa===bb?0:aa?-1:1)||a.due_date.localeCompare(b.due_date)
+ });
+ let pending=list.filter(o=>!["paid","skipped"].includes(o.status)),sum=pending.filter(o=>days(o.due_date,today())<=30).reduce((s,o)=>s+Math.max(0,Number(o.amount_due)-Number(o.amount_paid)),0);
+ $("#bills").innerHTML='<div class="metrics"><div class="metric"><small>Outstanding · Next 30 Days + Overdue</small><strong>'+money(sum)+'</strong></div><div class="metric"><small>Unpaid / Partial Bills</small><strong>'+pending.length+'</strong></div></div><div class="card" style="margin-top:15px"><h2>Bill Schedule</h2>'+(list.length?list.map(o=>{
+  const b=state.bills.find(x=>x.id===o.bill_id)||{},remain=Math.max(0,Number(o.amount_due)-Number(o.amount_paid)),status=billStatus(o);
+  return '<div class="rowitem"><div><strong>'+esc(b.name||"Bill")+'</strong><small>Due '+fmt(o.due_date)+' · '+esc(b.frequency||"")+'</small><div class="pill '+(status==="Overdue"?"overdue":status==="Paid"?"paid":"")+'">'+status+'</div></div><div class="right"><strong>'+money(remain)+'</strong>'+(["paid","skipped"].includes(o.status)?"":'<button data-pay-bill="'+o.id+'">Record Payment</button>')+'</div></div>';
+ }).join(""):'<p class="empty">No bills added yet. Add a recurring bill or a credit-card minimum payment.</p>')+'</div><div class="card"><h2>Bill Definitions</h2>'+state.bills.map(b=>row(b.name,fmt(b.next_due_date)+" · "+b.frequency,money(b.amount_estimate),'<button class="secondary" data-edit-bill="'+b.id+'">Edit</button>')).join("")+'</div><p class="tiny">In-app reminders appear daily beginning five days before a bill is due. iPhone background push notifications require a separate notification service and are not active yet.</p>';
+}
+function txForReports(month){return state.tx.filter(t=>t.kind==="expense"&&t.transaction_date.slice(0,7)===month)}
+function groupFor(month,group){
+ const totals={};for(const t of txForReports(month)){
+  let lines=state.splits.filter(s=>s.transaction_id===t.id);
+  if(group==="payee"){const n=t.payee_name||nameOf(t.payee_id,state.payees)||"Unspecified";totals[n]=(totals[n]||0)+Number(t.amount);}
+  else if(lines.length){for(const x of lines){const n=nameOf(x.category_id,state.categories);totals[n]=(totals[n]||0)+Number(x.amount);}}
+  else {const n=nameOf(t.category_id,state.categories);totals[n]=(totals[n]||0)+Number(t.amount);}
+ }return totals;
+}
+function renderReports(){
+ const dates=state.tx.map(t=>t.transaction_date.slice(0,7)),current=today().slice(0,7);
+ const months=[...new Set([current,...dates])].sort().reverse();
+ if(!state.report.monthA)state.report.monthA=months[1]||current;
+ if(!state.report.monthB)state.report.monthB=current;
+ const r=state.report,A=groupFor(r.monthA,r.group),B=groupFor(r.monthB,r.group),keys=[...new Set([...Object.keys(A),...Object.keys(B)])].sort((a,b)=>(B[b]||0)-(B[a]||0));
+ const monthOptions=selected=>months.map(m=>'<option value="'+m+'" '+(m===selected?"selected":"")+'>'+new Date(m+"-02T12:00").toLocaleDateString("en-US",{month:"long",year:"numeric"})+'</option>').join("");
+ $("#reports").innerHTML='<div class="card"><h2>Monthly Spending Comparison</h2><div class="split"><label>Compare From<select data-report="monthA">'+monthOptions(r.monthA)+'</select></label><label>Compare To<select data-report="monthB">'+monthOptions(r.monthB)+'</select></label></div><label>Group By<select data-report="group"><option value="category" '+(r.group==="category"?"selected":"")+'>Category</option><option value="payee" '+(r.group==="payee"?"selected":"")+'>Payee</option></select></label></div><div class="metrics"><div class="metric"><small>First Month Expenses</small><strong>'+money(Object.values(A).reduce((a,b)=>a+b,0))+'</strong></div><div class="metric"><small>Second Month Expenses</small><strong>'+money(Object.values(B).reduce((a,b)=>a+b,0))+'</strong></div></div><div class="card" style="margin-top:15px"><h2>Comparison by '+(r.group==="payee"?"Payee":"Category")+'</h2>'+(keys.length?keys.map(k=>{
+ const a=A[k]||0,b=B[k]||0,delta=b-a,pct=a?Math.round(delta/a*100)+"%":b?"New":"0%";
+ return '<div class="rowitem"><div style="flex:1"><strong>'+esc(k)+'</strong><small>'+money(a)+' → '+money(b)+'</small><div class="bar"><span style="width:'+Math.max(0,Math.min(100,100*b/Math.max(...Object.values(B),1)))+'%"></span></div></div><div class="right"><strong class="'+(delta>0?"negative":delta<0?"positive":"")+'">'+(delta>0?"+":"")+money(delta)+'</strong><small>'+pct+'</small></div></div>';
+ }).join(""):'<p class="empty">Enter some expenses to see comparisons.</p>')+'</div>';
+}
+function openEditor(title,markup,handler){
+ $("#editorTitle").textContent=title;$("#editorFields").innerHTML=markup;
+ $("#editForm").onsubmit=async e=>{e.preventDefault();const btn=$("#saveEditor");btn.disabled=true;try{await handler(new FormData($("#editForm")));$("#editor").close();await load();message("Saved successfully")}catch(err){message(err.message||String(err),true)}finally{btn.disabled=false}};
+ $("#editor").showModal();
+}
+function field(label,name,type="text",value="",more=""){return '<label>'+esc(label)+'<input name="'+name+'" type="'+type+'" value="'+esc(value)+'" '+more+'></label>'}
+function selectField(label,name,opts,selected){return '<label>'+esc(label)+'<select name="'+name+'">'+options(opts,selected)+'</select></label>'}
+const val=(f,n)=>String(f.get(n)||"").trim();
+const numeric=(f,n)=>{const x=Number(val(f,n));if(!Number.isFinite(x)||x<0)throw Error("Enter a valid amount");return Math.round(x*100)/100};
+function accountEditor(a=null){
+ const types=[{id:"checking",name:"Checking"},{id:"savings",name:"Savings"},{id:"cash",name:"Cash"},{id:"credit_card",name:"Credit Card"}];
+ openEditor(a?"Edit Account":"Add Account",field("Account Name","name","text",a?.name,"required maxlength=100")+selectField("Account Type","kind",types,a?.kind||"checking")+field("Opening Balance (credit card: enter a negative amount owed)","opening_balance","number",a?.opening_balance||"0",'step="0.01" required')+field("Opening Balance Date","opening_date","date",a?.opening_date||today(),"required")+field("Credit Limit (optional)","credit_limit","number",a?.credit_limit??"",'min="0" step="0.01"'),async f=>{
+ const row={name:val(f,"name"),kind:val(f,"kind"),opening_balance:Number(val(f,"opening_balance")),opening_date:val(f,"opening_date"),credit_limit:val(f,"credit_limit")?numeric(f,"credit_limit"):null};
+ if(!row.name||!Number.isFinite(row.opening_balance))throw Error("Enter a valid account name and opening balance");
+ if(a)await change("finance_accounts",a.id,row);else await save("finance_accounts",row);
+ });
+}
+function transactionEditor(t=null){
+ if(!activeAccounts().length){message("Please add an account first.",true);showTab("accounts");return}
+ const acct=activeAccounts().map(a=>({id:a.id,name:a.name})),kinds=[{id:"expense",name:"Expense"},{id:"income",name:"Income"},{id:"transfer",name:"Transfer"},{id:"adjustment",name:"Balance Adjustment"}];
+ const cats=state.categories.map(c=>({id:c.id,name:c.name+" ("+c.kind+")"}));
+ let existing=state.splits.filter(s=>s.transaction_id===t?.id),splitOpen=existing.length>0;
+ const markup=selectField("Transaction Type","kind",kinds,t?.kind||"expense")+field("Amount","amount","number",t?.amount||"",'min="0.01" step="0.01" required')+selectField("Account","account_id",acct,t?.account_id||acct[0].id)+selectField("To Account (transfers only)","destination_account_id",[{id:"",name:"Select destination"},...acct],t?.destination_account_id||"")+field("Payee","payee_name","text",t?.payee_name||"",'list="payees" maxlength=150')+'<datalist id="payees">'+state.payees.map(p=>'<option value="'+esc(p.name)+'">').join("")+'</datalist>'+selectField("Category","category_id",[{id:"",name:"Uncategorized"},...cats],t?.category_id||"")+field("Date","transaction_date","date",t?.transaction_date||today(),"required")+field("Description","description","text",t?.description||"")+field("Notes","notes","text",t?.notes||"")+'<label class="flex"><input id="useSplit" type="checkbox" style="width:auto;margin:0" '+(splitOpen?"checked":"")+'> Split expense by category</label><div id="splitFields"></div>';
+ openEditor(t?"Edit Transaction":"Add Transaction",markup,async f=>{
+ const kind=val(f,"kind"),amount=numeric(f,"amount"),account_id=val(f,"account_id"),dest=val(f,"destination_account_id"),split=$("#useSplit").checked;
+ if(!amount)throw Error("Amount must be greater than zero");
+ if(kind==="transfer"&&(!dest||dest===account_id))throw Error("Choose a different destination account");
+ if(split&&kind!=="expense")throw Error("Splits are for expenses only");
+ let lines=[];if(split){for(const el of document.querySelectorAll(".splitLine")){const id=el.querySelector("select").value,n=Number(el.querySelector("input").value);if(id&&n>0)lines.push({category_id:id,amount:Math.round(n*100)/100});}
+ if(Math.round(lines.reduce((s,x)=>s+x.amount,0)*100)!==Math.round(amount*100))throw Error("Split amounts must equal the transaction total");}
+ const row={kind,amount,account_id,destination_account_id:kind==="transfer"?dest:null,payee_name:val(f,"payee_name")||null,category_id:split?null:val(f,"category_id")||null,transaction_date:val(f,"transaction_date"),description:val(f,"description")||null,notes:val(f,"notes")||null};
+ let tx=t?await change("finance_transactions",t.id,row):await save("finance_transactions",row);
+ if(t)await api(db.from("finance_transaction_splits").delete().eq("transaction_id",t.id));
+ if(lines.length)await api(db.from("finance_transaction_splits").insert(lines.map(x=>({...x,user_id:uid(),transaction_id:tx.id}))));
+ if(row.payee_name&&!state.payees.some(p=>p.name.toLowerCase()===row.payee_name.toLowerCase())){await save("finance_payees",{name:row.payee_name})}
+ });
+ const splitBox=$("#splitFields"),use=$("#useSplit");
+ function splitLine(category_id="",amount=""){return '<div class="splitLine split">'+selectField("Category","unused",state.categories.filter(c=>c.kind==="expense").map(c=>({id:c.id,name:c.name})),category_id)+field("Amount","unused","number",amount,'min="0" step="0.01"')+'</div>'}
+ function redraw(){splitBox.innerHTML=use.checked?'<p class="tiny">Split amounts must total the transaction amount.</p><div id="splitLines">'+(existing.length?existing.map(x=>splitLine(x.category_id,x.amount)).join(""):splitLine())+'</div><button type="button" id="addSplitLine" class="secondary">+ Add split category</button>':"";const add=$("#addSplitLine");if(add)add.onclick=()=>$("#splitLines").insertAdjacentHTML("beforeend",splitLine())}
+ use.onchange=redraw;redraw();
+}
+function billEditor(b=null){
+ const acc=activeAccounts().map(a=>({id:a.id,name:a.name})),opts=[{id:"",name:"Select account"},...acc],freq=["once","weekly","biweekly","monthly","yearly"].map(x=>({id:x,name:x[0].toUpperCase()+x.slice(1)}));
+ openEditor(b?"Edit Bill":"Add Bill",field("Bill Name","name","text",b?.name||"","required")+field("Amount Due / Estimate","amount_estimate","number",b?.amount_estimate||"","min=0 step=0.01 required")+field("Next Due Date","next_due_date","date",b?.next_due_date||today(),"required")+selectField("Repeat","frequency",freq,b?.frequency||"monthly")+selectField("Bill Type","bill_kind",[{id:"bill",name:"Regular Bill"},{id:"credit_card_payment",name:"Credit Card Minimum Payment"}],b?.bill_kind||"bill")+selectField("Pay From Account","default_account_id",opts,b?.default_account_id||"")+selectField("Credit Card To Pay (if applicable)","destination_account_id",opts,b?.destination_account_id||"")+selectField("Expense Category","category_id",[{id:"",name:"Uncategorized"},...state.categories.filter(c=>c.kind==="expense")],b?.category_id||"")+field("Notes","notes","text",b?.notes||"")+ '<label class="flex"><input type="checkbox" name="auto_pay" style="width:auto;margin:0" '+(b?.auto_pay?"checked":"")+'> Scheduled automatic payment</label>',async f=>{
+ const bill_kind=val(f,"bill_kind"),destination=val(f,"destination_account_id")||null;
+ if(bill_kind==="credit_card_payment"&&!destination)throw Error("Select the credit card being paid.");
+ const row={name:val(f,"name"),amount_estimate:numeric(f,"amount_estimate"),next_due_date:val(f,"next_due_date"),frequency:val(f,"frequency"),bill_kind,default_account_id:val(f,"default_account_id")||null,destination_account_id:destination,category_id:val(f,"category_id")||null,notes:val(f,"notes")||null,auto_pay:!!f.get("auto_pay")};
+ if(b)await change("finance_bills",b.id,row);
+ else {const created=await save("finance_bills",row);await save("finance_bill_occurrences",{bill_id:created.id,due_date:row.next_due_date,amount_due:row.amount_estimate});}
+ });
+}
+function nextDate(date,frequency){
+ const d=new Date(date+"T12:00:00");
+ if(frequency==="weekly")d.setDate(d.getDate()+7);else if(frequency==="biweekly")d.setDate(d.getDate()+14);else if(frequency==="monthly"){const day=d.getDate();d.setDate(1);d.setMonth(d.getMonth()+1);d.setDate(Math.min(day,new Date(d.getFullYear(),d.getMonth()+1,0).getDate()));}else if(frequency==="yearly")d.setFullYear(d.getFullYear()+1);
+ return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");
+}
+function payBillEditor(o){
+ const b=state.bills.find(x=>x.id===o.bill_id);if(!b)return;
+ const acc=activeAccounts().map(a=>({id:a.id,name:a.name})),left=Math.max(0,Number(o.amount_due)-Number(o.amount_paid));
+ openEditor("Record Payment — "+b.name,field("Payment Amount","amount","number",left,'min="0.01" step="0.01" required')+field("Payment Date","transaction_date","date",today(),"required")+selectField("Paid From","account_id",acc,b.default_account_id||acc[0]?.id)+field("Notes","notes","text",""),async f=>{
+ const amount=numeric(f,"amount");if(amount<=0)throw Error("Enter a positive payment.");
+ if(!val(f,"account_id"))throw Error("Choose a payment account.");
+ const kind=b.bill_kind==="credit_card_payment"?"transfer":"expense";
+ if(kind==="transfer"&&val(f,"account_id")===b.destination_account_id)throw Error("Payment source and credit card must be different.");
+ await save("finance_transactions",{kind,amount,transaction_date:val(f,"transaction_date"),account_id:val(f,"account_id"),destination_account_id:kind==="transfer"?b.destination_account_id:null,payee_name:b.name,category_id:kind==="expense"?b.category_id:null,description:"Bill payment",notes:val(f,"notes")||null,bill_occurrence_id:o.id});
+ const newPaid=Number(o.amount_paid)+amount,done=newPaid>=Number(o.amount_due)-0.005;
+ await change("finance_bill_occurrences",o.id,{amount_paid:Math.round(newPaid*100)/100,status:done?"paid":"partial",paid_at:done?new Date().toISOString():null});
+ if(done&&b.active&&b.frequency!=="once"){
+   const next=nextDate(o.due_date,b.frequency);
+   const exists=state.occ.some(x=>x.bill_id===b.id&&x.due_date===next);
+   if(!exists)await save("finance_bill_occurrences",{bill_id:b.id,due_date:next,amount_due:b.amount_estimate});
+   await change("finance_bills",b.id,{next_due_date:next});
+ }
+ });
+}
+async function removeTransaction(id){if(!confirm("Delete this transaction? Its account balances will be recalculated."))return;try{await api(db.from("finance_transactions").delete().eq("id",id).eq("user_id",uid()));await load();message("Transaction deleted")}catch(e){message(e.message,true)}}
+function exportCSV(){
+ const records=filterTx(),header=["Date","Type","Payee","Account","Category","Amount","Description"],lines=[header,...records.map(t=>[fmt(t.transaction_date),t.kind,t.payee_name||"",nameOf(t.account_id,state.accounts),nameOf(t.category_id,state.categories),t.amount,t.description||""])];
+ const csv=lines.map(r=>r.map(s=>'"'+String(s??"").replaceAll('"','""')+'"').join(",")).join("\r\n");
+ const blob=new Blob([csv],{type:"text/csv;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="financetracker-transactions.csv";a.click();setTimeout(()=>URL.revokeObjectURL(url),500);
+}
+document.addEventListener("click",async e=>{
+ const b=e.target.closest("button");if(!b)return;
+ if(b.dataset.tab){showTab(b.dataset.tab);return}
+ if(b.dataset.go){showTab(b.dataset.go);return}
+ if(b.id==="addBtn"){state.tab==="accounts"?accountEditor():state.tab==="bills"?billEditor():transactionEditor();return}
+ if(b.dataset.editAccount){accountEditor(state.accounts.find(a=>a.id===b.dataset.editAccount));return}
+ if(b.dataset.editTx){const t=state.tx.find(x=>x.id===b.dataset.editTx);transactionEditor(t);return}
+ if(b.dataset.editBill){billEditor(state.bills.find(x=>x.id===b.dataset.editBill));return}
+ if(b.dataset.payBill){payBillEditor(state.occ.find(x=>x.id===b.dataset.payBill));return}
+ if(b.id==="exportCSV"){exportCSV();return}
+});
+document.addEventListener("change",e=>{
+ const filter=e.target.dataset.filter,rep=e.target.dataset.report;
+ if(filter){state.filter[filter]=e.target.value;renderTransactions();}
+ if(rep){state.report[rep]=e.target.value;renderReports();}
+});
+document.addEventListener("input",e=>{if(e.target.dataset.filter==="payee"){const pos=e.target.selectionStart;state.filter.payee=e.target.value;renderTransactions();const node=document.querySelector('[data-filter="payee"]');node.focus();node.setSelectionRange(pos,pos)}});
+$("#closeEditor").onclick=$("#cancelEditor").onclick=()=>$("#editor").close();
+$("#signout").onclick=async()=>{await db.auth.signOut();state.user=null;render()};
+$("#loginForm").onsubmit=async e=>{e.preventDefault();const email=$("#email").value.trim();$("#authMessage").textContent="Sending sign-in link…";try{await api(db.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}}));$("#authMessage").textContent="Check your email and tap the sign-in link."}catch(e){$("#authMessage").textContent=e.message}};
+async function start(){const {data:{session}}=await db.auth.getSession();state.user=session?.user||null;if(uid()){try{await load()}catch(e){message(e.message,true)}}else render()}
+db.auth.onAuthStateChange((event,session)=>{if(event==="SIGNED_IN"&&session?.user?.id!==uid()){state.user=session.user;setTimeout(()=>load().catch(e=>message(e.message,true)),0)}if(event==="SIGNED_OUT"){state.user=null;render()}});
+start();
