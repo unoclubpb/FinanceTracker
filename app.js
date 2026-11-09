@@ -47,6 +47,11 @@ async function load(){
  }
  state.settings=data[7][0]||null;
  render();
+ if(!state.accounts.length){
+  $("#devicePairing").classList.remove("hidden");
+  const status=$("#pairMessage");
+  if(status)status.textContent="No accounts were found for this device. If your financial records are visible on another device, connect this device using a pairing code from that device. Do not re-enter your balances or delete either app.";
+ }
 }
 async function save(table,row){return api(db.from(table).insert({...row,user_id:uid()}).select().single())}
 async function change(table,id,fields){return api(db.from(table).update(fields).eq("id",id).eq("user_id",uid()).select().single())}
@@ -243,6 +248,8 @@ async function openPairCode(){
 }
 // Keep pairing available through a private setup URL, but hide it in normal use.
 if(new URLSearchParams(window.location.search).get("devices")==="1")$("#devicePairing").classList.remove("hidden");
+// Tap the version footer to reveal recovery controls from an already connected device.
+$("footer").addEventListener("click",()=>{$("#devicePairing").classList.toggle("hidden");if(!$("#devicePairing").classList.contains("hidden"))$("#devicePairing").scrollIntoView({behavior:"smooth",block:"start"});});
 $("#pairGenerate").onclick=openPairCode;
 $("#pairRedeemForm").onsubmit=async e=>{
  e.preventDefault();
