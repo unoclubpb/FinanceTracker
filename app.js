@@ -135,7 +135,7 @@ function openEditor(title,markup,handler){
  $("#editForm").onsubmit=async e=>{e.preventDefault();const btn=$("#saveEditor");btn.disabled=true;try{await handler(new FormData($("#editForm")));$("#editor").close();await load();message("Saved successfully")}catch(err){message(err.message||String(err),true)}finally{btn.disabled=false}};
  $("#editor").showModal();
 }
-function field(label,name,type="text",value="",more=""){return '<label>'+esc(label)+'<input name="'+name+'" type="'+type+'" value="'+esc(value)+'" '+more+'></label>'}
+function field(label,name,type="text",value="",more=""){const keyboard=type==="number"?' inputmode="decimal" autocomplete="off"':"";return '<label>'+esc(label)+'<input name="'+name+'" type="'+type+'" value="'+esc(value)+'" '+keyboard+' '+more+'></label>'}
 function selectField(label,name,opts,selected){return '<label>'+esc(label)+'<select name="'+name+'">'+options(opts,selected)+'</select></label>'}
 const val=(f,n)=>String(f.get(n)||"").trim();
 const numeric=(f,n)=>{const x=Number(val(f,n));if(!Number.isFinite(x)||x<0)throw Error("Enter a valid amount");return Math.round(x*100)/100};
