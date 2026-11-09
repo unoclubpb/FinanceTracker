@@ -30,3 +30,12 @@
  .topline h1{min-width:0;font-size:24px}
  #addBtn{white-space:nowrap}
 }
+
+/* Version 1.12: compact two-column Overview and Accounts summaries on phones */
+@media(max-width:599px){
+ .metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+ .metric{padding:13px 10px;min-height:92px;border-radius:12px}
+ .metric small{font-size:12px;line-height:1.25;display:block}
+ .metric strong{font-size:clamp(13px,3.8vw,19px);line-height:1.2;letter-spacing:-.45px;margin-top:9px;white-space:nowrap}
+ .metric strong span{white-space:nowrap}
+}
