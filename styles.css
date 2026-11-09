@@ -47,3 +47,13 @@
  .metric small{font-size:12.5px;line-height:1.25}
  .metric strong{font-size:clamp(15px,4.35vw,21px);letter-spacing:-.65px;line-height:1.2;white-space:nowrap}
 }
+
+/* Bill Personal / Business selector */
+.bill-scope{border:0;padding:0;margin:0 0 14px;min-width:0}
+.bill-scope legend{font-size:13px;font-weight:700;color:#445a71;margin-bottom:7px}
+.bill-scope-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.bill-scope-options label{position:relative;display:block;margin:0;cursor:pointer}
+.bill-scope-options input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.bill-scope-options span{display:block;text-align:center;border:1px solid #c8d5e3;background:#f5f8fc;padding:11px 12px;border-radius:10px;color:#445a71;font-size:14px;font-weight:700}
+.bill-scope-options input:checked+span{background:#102a49;color:#fff;border-color:#102a49}
+.bill-scope-options input:focus-visible+span{outline:3px solid #d7a849;outline-offset:2px}
