@@ -6,8 +6,8 @@ const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const today=()=>{let d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-")};
 const fmt=s=>s?String(s).slice(5,7)+"-"+String(s).slice(8,10)+"-"+String(s).slice(0,4):"";
 const days=(a,b)=>Math.round((Date.parse(a+"T12:00:00")-Date.parse(b+"T12:00:00"))/86400000);
-const uid=()=>state.user?.id;
-const state={user:null,tab:"dashboard",accounts:[],categories:[],payees:[],tx:[],splits:[],bills:[],occ:[],settings:null,filter:{range:"30",payee:"",account:"all",category:"all",kind:"all",from:today(),to:today()},report:{monthA:"",monthB:"",group:"category"}};
+const uid=()=>state.ownerId||state.user?.id;
+const state={user:null,ownerId:null,tab:"dashboard",accounts:[],categories:[],payees:[],tx:[],splits:[],bills:[],occ:[],settings:null,filter:{range:"30",payee:"",account:"all",category:"all",kind:"all",from:today(),to:today()},report:{monthA:"",monthB:"",group:"category"}};
 const options=(arr,selected)=>arr.map(a=>'<option value="'+esc(a.id)+'" '+(a.id===selected?"selected":"")+'>'+esc(a.name)+'</option>').join("");
 const categories=kind=>state.categories.filter(c=>c.kind===kind&&!c.archived);
 const activeAccounts=()=>state.accounts.filter(a=>!a.archived);
@@ -221,6 +221,31 @@ document.addEventListener("change",e=>{
 document.addEventListener("input",e=>{if(e.target.dataset.filter==="payee"){const pos=e.target.selectionStart;state.filter.payee=e.target.value;renderTransactions();const node=document.querySelector('[data-filter="payee"]');node.focus();node.setSelectionRange(pos,pos)}});
 $("#closeEditor").onclick=$("#cancelEditor").onclick=()=>$("#editor").close();
 
+
+async function openPairCode(){
+ const btn=$("#pairGenerate"),out=$("#pairCode"),status=$("#pairMessage");
+ btn.disabled=true;status.textContent="Generating a private pairing code…";
+ try{
+  const code=await api(db.rpc("finance_issue_pair_code"));
+  out.textContent=code;
+  status.textContent="Enter this code on your other device within 10 minutes. It can be used only once.";
+ }catch(e){status.textContent=e.message}finally{btn.disabled=false}
+}
+$("#pairGenerate").onclick=openPairCode;
+$("#pairRedeemForm").onsubmit=async e=>{
+ e.preventDefault();
+ const btn=$("#pairRedeemForm button[type=submit]"),status=$("#pairMessage");
+ btn.disabled=true;status.textContent="Connecting this device…";
+ try{
+  const owner=await api(db.rpc("finance_redeem_pair_code",{p_code:$("#pairInput").value.trim()}));
+  if(!owner)throw Error("Invalid, expired, or unavailable code. Make sure this device has no existing financial entries and try a fresh code.");
+  state.ownerId=owner;
+  $("#pairInput").value="";
+  $("#pairCode").textContent="—";
+  await load();
+  status.textContent="Connected! This device now uses the same records.";
+ }catch(e){status.textContent=e.message}finally{btn.disabled=false}
+};
 async function start(){
  $("#authMessage").textContent="Opening your tracker…";
  try{
@@ -233,10 +258,12 @@ async function start(){
    active=data.session;
   }
   state.user=active?.user||null;
-  if(!uid())throw Error("No session was returned.");
+  if(!state.user?.id)throw Error("No session was returned.");
+  state.ownerId=await api(db.rpc("finance_owner_id"));
   await load();
  }catch(e){
   state.user=null;
+  state.ownerId=null;
   render();
   $("#authMessage").textContent=/anonymous|disabled|not allowed/i.test(e.message)
    ?"Automatic access needs Anonymous Sign-Ins enabled in Supabase Authentication settings. No email is required.":e.message;
@@ -245,8 +272,8 @@ async function start(){
 db.auth.onAuthStateChange((event,session)=>{
  if(event==="SIGNED_IN"&&session?.user?.id!==uid()){
   state.user=session.user;
-  setTimeout(()=>load().catch(e=>message(e.message,true)),0)
+  setTimeout(async()=>{try{state.ownerId=await api(db.rpc("finance_owner_id"));await load()}catch(e){message(e.message,true)}},0)
  }
- if(event==="SIGNED_OUT"){state.user=null;render()}
+ if(event==="SIGNED_OUT"){state.user=null;state.ownerId=null;render()}
 });
 start();
