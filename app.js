@@ -42,7 +42,7 @@ async function save(table,row){return api(db.from(table).insert({...row,user_id:
 async function change(table,id,fields){return api(db.from(table).update(fields).eq("id",id).eq("user_id",uid()).select().single())}
 function showTab(tab){state.tab=tab;render()}
 function render(){
- $("#auth").classList.toggle("hidden",!!uid());$("#app").classList.toggle("hidden",!uid());$("#signout").classList.toggle("hidden",!uid());
+ $("#auth").classList.toggle("hidden",!!uid());$("#app").classList.toggle("hidden",!uid());
  if(!uid())return;
  $("#pageTitle").textContent=titleCase(state.tab);
  document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===state.tab));
@@ -221,27 +221,32 @@ document.addEventListener("change",e=>{
 document.addEventListener("input",e=>{if(e.target.dataset.filter==="payee"){const pos=e.target.selectionStart;state.filter.payee=e.target.value;renderTransactions();const node=document.querySelector('[data-filter="payee"]');node.focus();node.setSelectionRange(pos,pos)}});
 $("#closeEditor").onclick=$("#cancelEditor").onclick=()=>$("#editor").close();
 $("#signout").onclick=async()=>{await db.auth.signOut();state.user=null;render()};
-$("#loginForm").onsubmit=async e=>{e.preventDefault();const email=$("#email").value.trim();const button=$("#loginForm button[type=submit]");button.disabled=true;$("#authMessage").textContent="Sending sign-in link…";try{await api(db.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}}));$("#authMessage").textContent="For the Home Screen app, COPY the sign-in link from your email (do not tap it), return here, and paste it below."}catch(e){$("#authMessage").textContent=/rate limit/i.test(e.message)?"Supabase has temporarily reached its email-sending limit. Check for an earlier sign-in email or try again after the limit resets. Repeated taps will not help.":e.message}finally{button.disabled=false}};
-$("#linkForm").onsubmit=async e=>{
- e.preventDefault();
- const button=$("#linkForm button[type=submit]");
- const raw=$("#magicLink").value.trim();
- const msg=$("#linkMessage");
- button.disabled=true;msg.textContent="Checking sign-in link…";
+async function start(){
+ $("#authMessage").textContent="Opening your tracker…";
  try{
-  const url=new URL(raw);
-  if(url.protocol!=="https:"||url.hostname!=="bkbvgnckoiypdwappktn.supabase.co"||url.pathname!=="/auth/v1/verify")throw Error("Paste the full sign-in link copied from your email.");
-  const tokenHash=url.searchParams.get("token_hash")||url.searchParams.get("token");
-  const type=url.searchParams.get("type");
-  if(!tokenHash||!["magiclink","signup","recovery","email"].includes(type))throw Error("This is not a valid Supabase email sign-in link.");
-  const {data,error}=await db.auth.verifyOtp({token_hash:tokenHash,type});
-  if(error)throw error;
-  $("#magicLink").value="";
-  if(data?.session?.user){state.user=data.session.user;await load();msg.textContent="Signed in successfully."}
-  else msg.textContent="Link checked, but no session was returned.";
- }catch(err){msg.textContent=/expired|invalid|already used/i.test(err.message)?"This link has expired or was already opened. Request a new email and COPY its link without opening it.":err.message}
- finally{button.disabled=false}
-};
-async function start(){const {data:{session}}=await db.auth.getSession();state.user=session?.user||null;if(uid()){try{await load()}catch(e){message(e.message,true)}}else render()}
-db.auth.onAuthStateChange((event,session)=>{if(event==="SIGNED_IN"&&session?.user?.id!==uid()){state.user=session.user;setTimeout(()=>load().catch(e=>message(e.message,true)),0)}if(event==="SIGNED_OUT"){state.user=null;render()}});
+  const {data:{session},error:sessionError}=await db.auth.getSession();
+  if(sessionError)throw sessionError;
+  let active=session;
+  if(!active){
+   const {data,error}=await db.auth.signInAnonymously();
+   if(error)throw error;
+   active=data.session;
+  }
+  state.user=active?.user||null;
+  if(!uid())throw Error("No session was returned.");
+  await load();
+ }catch(e){
+  state.user=null;
+  render();
+  $("#authMessage").textContent=/anonymous|disabled|not allowed/i.test(e.message)
+   ?"Automatic access needs Anonymous Sign-Ins enabled in Supabase Authentication settings. No email is required.":e.message;
+ }
+}
+db.auth.onAuthStateChange((event,session)=>{
+ if(event==="SIGNED_IN"&&session?.user?.id!==uid()){
+  state.user=session.user;
+  setTimeout(()=>load().catch(e=>message(e.message,true)),0)
+ }
+ if(event==="SIGNED_OUT"){state.user=null;render()}
+});
 start();
