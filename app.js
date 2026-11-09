@@ -157,7 +157,7 @@ function transactionEditor(t=null){
  const acct=activeAccounts().map(a=>({id:a.id,name:a.name})),kinds=[{id:"expense",name:"Expense"},{id:"income",name:"Income"},{id:"transfer",name:"Transfer"},{id:"adjustment",name:"Balance Adjustment"}];
  const cats=state.categories.map(c=>({id:c.id,name:c.name+" ("+c.kind+")"}));
  let existing=state.splits.filter(s=>s.transaction_id===t?.id),splitOpen=existing.length>0;
- const markup=selectField("Transaction Type","kind",kinds,t?.kind||"expense")+field("Amount","amount","number",t?.amount||"",'min="0.01" step="0.01" required')+selectField("Account","account_id",acct,t?.account_id||acct[0].id)+selectField("To Account (transfers only)","destination_account_id",[{id:"",name:"Select destination"},...acct],t?.destination_account_id||"")+field("Payee","payee_name","text",t?.payee_name||"",'list="payees" maxlength=150')+'<datalist id="payees">'+state.payees.map(p=>'<option value="'+esc(p.name)+'">').join("")+'</datalist>'+selectField("Category","category_id",[{id:"",name:"Uncategorized"},...cats],t?.category_id||"")+field("Date","transaction_date","date",t?.transaction_date||today(),"required")+field("Description","description","text",t?.description||"")+field("Notes","notes","text",t?.notes||"")+'<label class="flex"><input id="useSplit" type="checkbox" style="width:auto;margin:0" '+(splitOpen?"checked":"")+'> Split expense by category</label><div id="splitFields"></div>';
+ const markup=selectField("Transaction Type","kind",kinds,t?.kind||"expense")+field("Amount","amount","number",t?.amount||"",'min="0.01" step="0.01" required')+'<div id="txFromAccount">'+selectField("Account","account_id",acct,t?.account_id||acct[0].id)+'</div><div id="txToAccount">'+selectField("To Account","destination_account_id",[{id:"",name:"Select destination"},...acct],t?.destination_account_id||"")+'</div><div id="txPayee">'+field("Payee","payee_name","text",t?.payee_name||"",'list="payees" maxlength=150')+'<datalist id="payees">'+state.payees.map(p=>'<option value="'+esc(p.name)+'">').join("")+'</datalist></div><div id="txCategory">'+selectField("Category","category_id",[{id:"",name:"Uncategorized"},...cats],t?.category_id||"")+'</div>'+field("Date","transaction_date","date",t?.transaction_date||today(),"required")+field("Notes","notes","text",t?.notes||"")+'<label class="flex" id="txSplitToggle"><input id="useSplit" type="checkbox" style="width:auto;margin:0" '+(splitOpen?"checked":"")+'> Split expense by category</label><div id="splitFields"></div>';
  openEditor(t?"Edit Transaction":"Add Transaction",markup,async f=>{
  const kind=val(f,"kind"),amount=numeric(f,"amount"),account_id=val(f,"account_id"),dest=val(f,"destination_account_id"),split=$("#useSplit").checked;
  if(!amount)throw Error("Amount must be greater than zero");
@@ -165,7 +165,7 @@ function transactionEditor(t=null){
  if(split&&kind!=="expense")throw Error("Splits are for expenses only");
  let lines=[];if(split){for(const el of document.querySelectorAll(".splitLine")){const id=el.querySelector("select").value,n=Number(el.querySelector("input").value);if(id&&n>0)lines.push({category_id:id,amount:Math.round(n*100)/100});}
  if(Math.round(lines.reduce((s,x)=>s+x.amount,0)*100)!==Math.round(amount*100))throw Error("Split amounts must equal the transaction total");}
- const row={kind,amount,account_id,destination_account_id:kind==="transfer"?dest:null,payee_name:val(f,"payee_name")||null,category_id:split?null:val(f,"category_id")||null,transaction_date:val(f,"transaction_date"),description:val(f,"description")||null,notes:val(f,"notes")||null};
+ const row={kind,amount,account_id,destination_account_id:kind==="transfer"?dest:null,payee_name:kind==="transfer"?null:val(f,"payee_name")||null,category_id:kind==="transfer"||split?null:val(f,"category_id")||null,transaction_date:val(f,"transaction_date"),description:t?.description||null,notes:val(f,"notes")||null};
  let tx=t?await change("finance_transactions",t.id,row):await save("finance_transactions",row);
  if(t)await api(db.from("finance_transaction_splits").delete().eq("transaction_id",t.id));
  if(lines.length)await api(db.from("finance_transaction_splits").insert(lines.map(x=>({...x,user_id:uid(),transaction_id:tx.id}))));
@@ -174,7 +174,19 @@ function transactionEditor(t=null){
  const splitBox=$("#splitFields"),use=$("#useSplit");
  function splitLine(category_id="",amount=""){return '<div class="splitLine split">'+selectField("Category","unused",state.categories.filter(c=>c.kind==="expense").map(c=>({id:c.id,name:c.name})),category_id)+field("Amount","unused","number",amount,'min="0" step="0.01"')+'</div>'}
  function redraw(){splitBox.innerHTML=use.checked?'<p class="tiny">Split amounts must total the transaction amount.</p><div id="splitLines">'+(existing.length?existing.map(x=>splitLine(x.category_id,x.amount)).join(""):splitLine())+'</div><button type="button" id="addSplitLine" class="secondary">+ Add split category</button>':"";const add=$("#addSplitLine");if(add)add.onclick=()=>$("#splitLines").insertAdjacentHTML("beforeend",splitLine())}
- use.onchange=redraw;redraw();
+ function syncType(){
+ const kind=document.querySelector('#editForm [name="kind"]').value;
+ const transfer=kind==="transfer",expense=kind==="expense";
+ $("#txToAccount").classList.toggle("hidden",!transfer);
+ $("#txPayee").classList.toggle("hidden",transfer);
+ $("#txCategory").classList.toggle("hidden",transfer);
+ $("#txSplitToggle").classList.toggle("hidden",!expense);
+ if(!expense)use.checked=false;
+ $("#txFromAccount").querySelector("label").firstChild.textContent=transfer?"From Account":"Account";
+ redraw();
+}
+document.querySelector('#editForm [name="kind"]').addEventListener("change",syncType);
+use.onchange=redraw;syncType();
 }
 function billEditor(b=null){
  const acc=activeAccounts().map(a=>({id:a.id,name:a.name})),opts=[{id:"",name:"Select account"},...acc],freq=["once","weekly","biweekly","monthly","yearly"].map(x=>({id:x,name:x[0].toUpperCase()+x.slice(1)}));
