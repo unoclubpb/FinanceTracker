@@ -241,6 +241,8 @@ async function openPairCode(){
   status.textContent="Enter this code on your other device within 10 minutes. It can be used only once.";
  }catch(e){status.textContent=e.message}finally{btn.disabled=false}
 }
+// Keep pairing available through a private setup URL, but hide it in normal use.
+if(new URLSearchParams(window.location.search).get("devices")==="1")$("#devicePairing").classList.remove("hidden");
 $("#pairGenerate").onclick=openPairCode;
 $("#pairRedeemForm").onsubmit=async e=>{
  e.preventDefault();
