@@ -30,11 +30,15 @@ async function load(){
  const data=await Promise.all(tables.map(t=>api(db.from(t).select("*"))));
  [state.accounts,state.categories,state.payees,state.tx,state.splits,state.bills,state.occ]=data;
  if(!state.categories.length){
-   const starter=[["Groceries","expense"],["Restaurants","expense"],["Gas","expense"],["Utilities","expense"],["Housing","expense"],["Insurance","expense"],["Shopping","expense"],["Entertainment","expense"],["Household","expense"],["Medical","expense"],["Other Expense","expense"],["Paycheck","income"],["Refund","income"],["Other Income","income"]];
+   const starter=[["Groceries","expense"],["Restaurants","expense"],["Gas","expense"],["Utilities","expense"],["Housing","expense"],["Insurance","expense"],["Shopping","expense"],["Entertainment","expense"],["Household","expense"],["Medical","expense"],["Other Expense","expense"],["Miscellaneous","expense"],["Paycheck","income"],["Refund","income"],["Other Income","income"]];
    await api(db.from("finance_categories").upsert(starter.map(([name,kind])=>({name,kind,user_id:uid()})),{onConflict:"user_id,kind,name",ignoreDuplicates:true}));
    state.categories=await api(db.from("finance_categories").select("*"));
  }
 
+ if(!state.categories.some(c=>c.kind==="expense"&&c.name.toLowerCase()==="miscellaneous")){
+   await api(db.from("finance_categories").upsert({name:"Miscellaneous",kind:"expense",user_id:uid()},{onConflict:"user_id,kind,name",ignoreDuplicates:true}));
+   state.categories=await api(db.from("finance_categories").select("*"));
+ }
  state.settings=data[7][0]||null;
  render();
 }
