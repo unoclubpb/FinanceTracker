@@ -220,7 +220,7 @@ document.addEventListener("change",e=>{
 });
 document.addEventListener("input",e=>{if(e.target.dataset.filter==="payee"){const pos=e.target.selectionStart;state.filter.payee=e.target.value;renderTransactions();const node=document.querySelector('[data-filter="payee"]');node.focus();node.setSelectionRange(pos,pos)}});
 $("#closeEditor").onclick=$("#cancelEditor").onclick=()=>$("#editor").close();
-$("#signout").onclick=async()=>{await db.auth.signOut();state.user=null;render()};
+
 async function start(){
  $("#authMessage").textContent="Opening your tracker…";
  try{
