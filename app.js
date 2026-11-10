@@ -247,7 +247,8 @@ function exportCSV(){
 }
 document.addEventListener("click",async e=>{
  const b=e.target.closest("button");if(!b)return;
- if(b.dataset.accountView){state.accountView=state.accountView===b.dataset.accountView?"all":b.dataset.accountView;renderAccounts();return}\n if(b.dataset.tab){showTab(b.dataset.tab);return}
+ if(b.dataset.accountView){state.accountView=b.dataset.accountView==="all"||state.accountView===b.dataset.accountView?"all":b.dataset.accountView;renderAccounts();return}
+ if(b.dataset.tab){showTab(b.dataset.tab);return}
  if(b.dataset.go){showTab(b.dataset.go);return}
  if(b.id==="addBtn"){state.tab==="accounts"?accountEditor():state.tab==="bills"?billEditor():transactionEditor();return}
  if(b.dataset.editAccount){accountEditor(state.accounts.find(a=>a.id===b.dataset.editAccount));return}
