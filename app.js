@@ -58,7 +58,6 @@ async function save(table,row){return api(db.from(table).insert({...row,user_id:
 async function change(table,id,fields){return api(db.from(table).update(fields).eq("id",id).eq("user_id",uid()).select().single())}
 function showTab(tab){state.tab=tab;render()}
 function render(){
- $("#auth").classList.toggle("hidden",!!uid());$("#app").classList.toggle("hidden",!uid());
  if(!uid())return;
  $("#pageTitle").textContent=titleCase(state.tab);
  document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===state.tab));
@@ -296,7 +295,7 @@ $("#pairRedeemForm").onsubmit=async e=>{
  }catch(e){status.textContent=e.message}finally{btn.disabled=false}
 };
 async function start(){
- $("#authMessage").textContent="Opening your tracker…";
+
  try{
   const {data:{session},error:sessionError}=await db.auth.getSession();
   if(sessionError)throw sessionError;
@@ -313,9 +312,12 @@ async function start(){
  }catch(e){
   state.user=null;
   state.ownerId=null;
-  render();
-  $("#authMessage").textContent=/anonymous|disabled|not allowed/i.test(e.message)
+  $("#initialLoading")?.remove();
+  const details=/anonymous|disabled|not allowed/i.test(e.message)
    ?"Automatic access needs Anonymous Sign-Ins enabled in Supabase Authentication settings. No email is required.":e.message;
+  const warning=$("#message");
+  warning.textContent="Unable to load your accounts: "+details;
+  warning.className="notice error";
  }
 }
 db.auth.onAuthStateChange((event,session)=>{
@@ -323,6 +325,6 @@ db.auth.onAuthStateChange((event,session)=>{
   state.user=session.user;
   setTimeout(async()=>{try{state.ownerId=await api(db.rpc("finance_owner_id"));await load()}catch(e){message(e.message,true)}},0)
  }
- if(event==="SIGNED_OUT"){state.user=null;state.ownerId=null;render()}
+ if(event==="SIGNED_OUT"){state.user=null;state.ownerId=null;const warning=$("#message");warning.textContent="The connection ended. Reopen Finance Tracker to reconnect.";warning.className="notice error";}
 });
 start();
