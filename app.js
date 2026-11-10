@@ -10,7 +10,7 @@ const today=()=>{let d=new Date();return [d.getFullYear(),String(d.getMonth()+1)
 const fmt=s=>s?String(s).slice(5,7)+"-"+String(s).slice(8,10)+"-"+String(s).slice(0,4):"";
 const days=(a,b)=>Math.round((Date.parse(a+"T12:00:00")-Date.parse(b+"T12:00:00"))/86400000);
 const uid=()=>state.ownerId||state.user?.id;
-const state={user:null,ownerId:null,tab:"dashboard",accounts:[],categories:[],payees:[],tx:[],splits:[],bills:[],occ:[],settings:null,filter:{range:"30",payee:"",account:"all",category:"all",kind:"all",from:today(),to:today()},report:{monthA:"",monthB:"",group:"category"}};
+const state={user:null,ownerId:null,tab:"dashboard",accountView:"all",accounts:[],categories:[],payees:[],tx:[],splits:[],bills:[],occ:[],settings:null,filter:{range:"30",payee:"",account:"all",category:"all",kind:"all",from:today(),to:today()},report:{monthA:"",monthB:"",group:"category"}};
 const alphabetic=(arr)=>[...arr].sort((a,b)=>String(a?.name??"").localeCompare(String(b?.name??""),undefined,{sensitivity:"base",numeric:true}));
 const options=(arr,selected)=>[...arr].sort((a,b)=>(a.id===""?-1:b.id===""?1:0)||String(a.name).localeCompare(String(b.name),undefined,{sensitivity:"base",numeric:true})).map(a=>'<option value="'+esc(a.id)+'" '+(a.id===selected?"selected":"")+'>'+esc(a.name)+'</option>').join("");
 const categories=kind=>state.categories.filter(c=>c.kind===kind&&!c.archived);
@@ -78,8 +78,23 @@ function renderDashboard(){
  $("#dashboard").innerHTML='<div class="metrics"><div class="metric"><small>Available Cash</small><strong>'+cashDisplay(cash())+'</strong></div><div class="metric"><small>Credit Card Debt</small><strong>'+owedDisplay(debt())+'</strong></div><div class="metric"><small>Personal Debt</small><strong>'+owedDisplay(personalDebt())+'</strong></div><div class="metric"><small>Auto Loan Debt</small><strong>'+owedDisplay(autoDebt())+'</strong></div><div class="metric"><small>Tax Debt</small><strong>'+owedDisplay(taxDebt())+'</strong></div><div class="metric"><small>Income · Last 30 Days</small><strong>'+money(inc)+'</strong></div><div class="metric"><small>Expenses · Last 30 Days</small><strong>'+money(spent)+'</strong></div></div><div class="twocol"><div class="card" style="margin-top:15px"><h2>Upcoming Bills</h2><p class="muted">Due or overdue through the next 30 days: <strong>'+money(owing)+'</strong></p><p>Cash after listed bills: <strong>'+cashDisplay(cash()-owing)+'</strong></p>'+(urgent.length?urgent.slice(0,6).map(o=>row(nameOf(o.bill_id,state.bills),fmt(o.due_date),money(Number(o.amount_due)-Number(o.amount_paid)), '<div class="pill '+(days(o.due_date,now)<0?"overdue":"")+'">'+(days(o.due_date,now)<0?"Overdue":days(o.due_date,now)===0?"Due today":"Due in "+days(o.due_date,now)+" days")+'</div>')).join(""):'<p class="empty">No bills due within 5 days.</p>')+'</div><div class="card" style="margin-top:15px"><h2>Recent Transactions</h2>'+state.tx.slice().sort((a,b)=>b.transaction_date.localeCompare(a.transaction_date)).slice(0,6).map(t=>row(t.payee_name||nameOf(t.payee_id,state.payees)||t.kind,fmt(t.transaction_date)+" · "+nameOf(t.account_id,state.accounts), (t.kind==="income"?"+":t.kind==="expense"?"−":"")+money(t.amount))).join("")+'<button class="secondary" data-go="transactions">See all transactions</button></div></div>';
 }
 function renderAccounts(){
- const ac=activeAccounts(),groups=[["BANK & CASH ACCOUNTS",ac.filter(a=>["checking","savings","cash"].includes(a.kind))],["DIGITAL WALLETS",ac.filter(a=>a.kind==="digital_wallet")],["CREDIT CARDS",ac.filter(a=>a.kind==="credit_card")],["PERSONAL DEBT",ac.filter(a=>a.kind==="personal_debt")],["AUTO LOANS",ac.filter(a=>a.kind==="auto_loan")],["TAX DEBT",ac.filter(a=>a.kind==="tax_debt")]];
- $("#accounts").innerHTML='<div class="metrics"><div class="metric"><small>Available Cash</small><strong>'+cashDisplay(cash())+'</strong></div><div class="metric"><small>Credit Card Debt</small><strong>'+owedDisplay(debt())+'</strong></div><div class="metric"><small>Personal Debt</small><strong>'+owedDisplay(personalDebt())+'</strong></div><div class="metric"><small>Auto Loan Debt</small><strong>'+owedDisplay(autoDebt())+'</strong></div><div class="metric"><small>Tax Debt</small><strong>'+owedDisplay(taxDebt())+'</strong></div></div>'+groups.map(([label,list])=>'<div class="card" style="margin-top:15px"><h2>'+label+'</h2>'+(list.length?list.map(a=>'<div class="rowitem"><div><strong>'+esc(a.name)+'</strong><small>'+esc(a.kind.replaceAll("_"," "))+'</small></div><div class="right"><strong>'+balanceDisplay(a)+'</strong><button class="secondary" data-edit-account="'+esc(a.id)+'">Edit</button></div></div>').join(""):'<p class="empty">No accounts yet. Add your first account.</p>')+'</div>').join("");
+ const ac=activeAccounts(),view=state.accountView||"all";
+ const groupDefs=[
+  ["BANK & CASH ACCOUNTS",ac.filter(a=>["checking","savings","cash"].includes(a.kind)),"cash"],
+  ["DIGITAL WALLETS",ac.filter(a=>a.kind==="digital_wallet"),"cash"],
+  ["CREDIT CARDS",ac.filter(a=>a.kind==="credit_card"),"credit"],
+  ["PERSONAL DEBT",ac.filter(a=>a.kind==="personal_debt"),"personal"],
+  ["AUTO LOANS",ac.filter(a=>a.kind==="auto_loan"),"auto"],
+  ["TAX DEBT",ac.filter(a=>a.kind==="tax_debt"),"tax"]
+ ];
+ const metrics=[["cash","Available Cash",cashDisplay(cash())],["credit","Credit Card Debt",owedDisplay(debt())],["personal","Personal Debt",owedDisplay(personalDebt())],["auto","Auto Loan Debt",owedDisplay(autoDebt())],["tax","Tax Debt",owedDisplay(taxDebt())]];
+ const buttons=metrics.map(([key,label,total])=>
+  '<button type="button" class="metric account-filter'+(view===key?' selected':'')+'" data-account-view="'+key+'" aria-pressed="'+(view===key)+'" title="Show '+label+' accounts"><small>'+label+'</small><strong>'+total+'</strong></button>'
+ ).join("");
+ const groups=groupDefs.filter(([,list,key])=>view==="all"||key===view);
+ $("#accounts").innerHTML='<div class="metrics">'+buttons+'</div>'+
+ (view!=="all"?'<div class="account-filter-actions"><button type="button" class="secondary" data-account-view="all">Show All Accounts</button></div>':'')+
+ groups.map(([label,list])=>'<div class="card" style="margin-top:15px"><h2>'+label+'</h2>'+(list.length?list.map(a=>'<div class="rowitem"><div><strong>'+esc(a.name)+'</strong><small>'+esc(a.kind.replaceAll("_"," "))+'</small></div><div class="right"><strong>'+balanceDisplay(a)+'</strong><button class="secondary" data-edit-account="'+esc(a.id)+'">Edit</button></div></div>').join(""):'<p class="empty">No accounts in this category.</p>')+'</div>').join("");
 }
 function filterTx(){
  let f=state.filter,now=today();
@@ -232,7 +247,7 @@ function exportCSV(){
 }
 document.addEventListener("click",async e=>{
  const b=e.target.closest("button");if(!b)return;
- if(b.dataset.tab){showTab(b.dataset.tab);return}
+ if(b.dataset.accountView){state.accountView=state.accountView===b.dataset.accountView?"all":b.dataset.accountView;renderAccounts();return}\n if(b.dataset.tab){showTab(b.dataset.tab);return}
  if(b.dataset.go){showTab(b.dataset.go);return}
  if(b.id==="addBtn"){state.tab==="accounts"?accountEditor():state.tab==="bills"?billEditor():transactionEditor();return}
  if(b.dataset.editAccount){accountEditor(state.accounts.find(a=>a.id===b.dataset.editAccount));return}
