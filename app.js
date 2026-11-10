@@ -150,6 +150,8 @@ function openEditor(title,markup,handler){
  $("#editorTitle").textContent=title;$("#editorFields").innerHTML=markup;
  $("#editForm").onsubmit=async e=>{e.preventDefault();const btn=$("#saveEditor");btn.disabled=true;try{await handler(new FormData($("#editForm")));$("#editor").close();await load();message("Saved successfully")}catch(err){message(err.message||String(err),true)}finally{btn.disabled=false}};
  $("#editor").showModal();
+ // Avoid focusing a small form control and triggering iOS Safari viewport zoom.
+ if(document.activeElement&&document.activeElement!==document.body)document.activeElement.blur();
 }
 function field(label,name,type="text",value="",more=""){const keyboard=type==="number"?' inputmode="decimal" autocomplete="off"':"";return '<label>'+esc(label)+'<input name="'+name+'" type="'+type+'" value="'+esc(value)+'" '+keyboard+' '+more+'></label>'}
 function selectField(label,name,opts,selected){return '<label>'+esc(label)+'<select name="'+name+'">'+options(opts,selected)+'</select></label>'}
@@ -173,10 +175,11 @@ function transactionEditor(t=null){
  const acct=activeAccounts().map(a=>({id:a.id,name:a.name})),kinds=[{id:"expense",name:"Expense"},{id:"income",name:"Income"},{id:"transfer",name:"Transfer"},{id:"adjustment",name:"Balance Adjustment"}];
  const cats=state.categories.map(c=>({id:c.id,name:c.name+" ("+c.kind+")"}));
  let existing=state.splits.filter(s=>s.transaction_id===t?.id),splitOpen=existing.length>0;
- const markup=selectField("Transaction Type","kind",kinds,t?.kind||"expense")+field("Amount","amount","number",t?.amount||"",'min="0.01" step="0.01" required')+'<div id="txFromAccount">'+selectField("Account","account_id",acct,t?.account_id||acct[0].id)+'</div><div id="txToAccount">'+selectField("To Account","destination_account_id",[{id:"",name:"Select destination"},...acct],t?.destination_account_id||"")+'</div><div id="txPayee">'+field("Payee","payee_name","text",t?.payee_name||"",'list="payees" maxlength=150')+'<datalist id="payees">'+alphabetic(state.payees).map(p=>'<option value="'+esc(p.name)+'">').join("")+'</datalist></div><div id="txCategory">'+selectField("Category","category_id",[{id:"",name:"Uncategorized"},...cats],t?.category_id||"")+'</div>'+field("Date","transaction_date","date",t?.transaction_date||today(),"required")+field("Notes","notes","text",t?.notes||"")+'<label class="flex" id="txSplitToggle"><input id="useSplit" type="checkbox" style="width:auto;margin:0" '+(splitOpen?"checked":"")+'> Split expense by category</label><div id="splitFields"></div>';
+ const markup=selectField("Transaction Type","kind",kinds,t?.kind||"expense")+field("Amount","amount","number",t?.amount||"",'min="0.01" step="0.01" required')+'<div id="txFromAccount">'+selectField("Account","account_id",[{id:"",name:"Select account"},...acct],t?.account_id||"")+'</div><div id="txToAccount">'+selectField("To Account","destination_account_id",[{id:"",name:"Select destination"},...acct],t?.destination_account_id||"")+'</div><div id="txPayee">'+field("Payee","payee_name","text",t?.payee_name||"",'list="payees" maxlength=150')+'<datalist id="payees">'+alphabetic(state.payees).map(p=>'<option value="'+esc(p.name)+'">').join("")+'</datalist></div><div id="txCategory">'+selectField("Category","category_id",[{id:"",name:"Uncategorized"},...cats],t?.category_id||"")+'</div>'+field("Date","transaction_date","date",t?.transaction_date||today(),"required")+field("Notes","notes","text",t?.notes||"")+'<label class="flex" id="txSplitToggle"><input id="useSplit" type="checkbox" style="width:auto;margin:0" '+(splitOpen?"checked":"")+'> Split expense by category</label><div id="splitFields"></div>';
  openEditor(t?"Edit Transaction":"Add Transaction",markup,async f=>{
  const kind=val(f,"kind"),amount=numeric(f,"amount"),account_id=val(f,"account_id"),dest=val(f,"destination_account_id"),split=$("#useSplit").checked;
  if(!amount)throw Error("Amount must be greater than zero");
+ if(!account_id)throw Error("Select an account for this transaction.");
  if(kind==="transfer"&&(!dest||dest===account_id))throw Error("Choose a different destination account");
  if(split&&kind!=="expense")throw Error("Splits are for expenses only");
  let lines=[];if(split){for(const el of document.querySelectorAll(".splitLine")){const id=el.querySelector("select").value,n=Number(el.querySelector("input").value);if(id&&n>0)lines.push({category_id:id,amount:Math.round(n*100)/100});}
@@ -263,7 +266,7 @@ document.addEventListener("change",e=>{
  if(rep){state.report[rep]=e.target.value;renderReports();}
 });
 document.addEventListener("input",e=>{if(e.target.dataset.filter==="payee"){const pos=e.target.selectionStart;state.filter.payee=e.target.value;renderTransactions();const node=document.querySelector('[data-filter="payee"]');node.focus();node.setSelectionRange(pos,pos)}});
-$("#closeEditor").onclick=$("#cancelEditor").onclick=()=>$("#editor").close();
+$("#closeEditor").onclick=$("#cancelEditor").onclick=()=>{document.activeElement?.blur();$("#editor").close()};
 
 
 async function openPairCode(){
