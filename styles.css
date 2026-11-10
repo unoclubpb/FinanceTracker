@@ -57,3 +57,13 @@
 .bill-scope-options span{display:block;text-align:center;border:1px solid #c8d5e3;background:#f5f8fc;padding:11px 12px;border-radius:10px;color:#445a71;font-size:14px;font-weight:700}
 .bill-scope-options input:checked+span{background:#102a49;color:#fff;border-color:#102a49}
 .bill-scope-options input:focus-visible+span{outline:3px solid #d7a849;outline-offset:2px}
+
+/* Version 1.19: clickable account summary cards and category filtering */
+button.metric.account-filter{display:block;width:100%;text-align:left;background:#fff;color:#14263d;border:1px solid #dbe4ef;border-radius:14px;padding:17px;min-width:0;overflow:hidden;box-shadow:none;font-family:inherit;cursor:pointer}
+button.metric.account-filter small{display:block;color:#627489;font-size:13px;font-weight:400}
+button.metric.account-filter strong{font-size:clamp(17px,2.5vw,27px);display:block;margin-top:10px;white-space:nowrap;letter-spacing:-.45px;font-variant-numeric:tabular-nums}
+button.metric.account-filter.selected{border:2px solid #102a49;background:#f0f5fb;padding:16px}
+button.metric.account-filter:focus-visible{outline:3px solid #d7a849;outline-offset:2px}
+.account-filter-actions{display:flex;justify-content:flex-end;margin:15px 0 4px}
+@media(min-width:780px){button.metric.account-filter strong{font-size:clamp(22px,3vw,30px)}}
+@media(max-width:599px){button.metric.account-filter{padding:13px 8px;min-height:92px;border-radius:12px}button.metric.account-filter.selected{padding:12px 7px}button.metric.account-filter small{font-size:12.5px;line-height:1.25}button.metric.account-filter strong{font-size:clamp(15px,4.35vw,21px);margin-top:9px;letter-spacing:-.65px;line-height:1.2}}
