@@ -159,10 +159,19 @@ const val=(f,n)=>String(f.get(n)||"").trim();
 const numeric=(f,n)=>{const x=Number(val(f,n));if(!Number.isFinite(x)||x<0)throw Error("Enter a valid amount");return Math.round(x*100)/100};
 function accountEditor(a=null){
  const types=[{id:"checking",name:"Checking"},{id:"savings",name:"Savings"},{id:"cash",name:"Cash"},{id:"digital_wallet",name:"Digital Wallet"},{id:"credit_card",name:"Credit Card"},{id:"personal_debt",name:"Personal Debt"},{id:"auto_loan",name:"Auto Loan"},{id:"tax_debt",name:"Tax Debt"}];
- openEditor(a?"Edit Account":"Add Account",field("Account Name","name","text",a?.name,"required maxlength=100")+selectField("Account Type","kind",types,a?.kind||"checking")+field("Opening Balance (for debts, enter a negative amount owed)","opening_balance","number",a?.opening_balance||"0",'step="0.01" required')+field("Opening Balance Date","opening_date","date",a?.opening_date||today(),"required")+field("Credit Limit (optional)","credit_limit","number",a?.credit_limit??"",'min="0" step="0.01"'),async f=>{
- const row={name:val(f,"name"),kind:val(f,"kind"),opening_balance:Number(val(f,"opening_balance")),opening_date:val(f,"opening_date"),credit_limit:val(f,"credit_limit")?numeric(f,"credit_limit"):null};
- if(!row.name||!Number.isFinite(row.opening_balance))throw Error("Enter a valid account name and opening balance");
- if(a)await change("finance_accounts",a.id,row);else await save("finance_accounts",row);
+ const editable=field("Account Name","name","text",a?.name||"","required maxlength=100")+selectField("Account Type","kind",types,a?.kind||"checking");
+ const opening=a?"":field("Opening Balance (for debts, enter a negative amount owed)","opening_balance","number","0",'step="0.01" required')+field("Opening Balance Date","opening_date","date",today(),"required");
+ const credit=field("Credit Limit (optional)","credit_limit","number",a?.credit_limit??"",'min="0" step="0.01"');
+ openEditor(a?"Edit Account":"Add Account",editable+opening+credit+(a?'<p class="tiny">The opening balance and opening date are locked to protect your account history. Record changes using Transactions.</p>':""),async f=>{
+  const row={name:val(f,"name"),kind:val(f,"kind"),credit_limit:val(f,"credit_limit")?numeric(f,"credit_limit"):null};
+  if(!row.name)throw Error("Enter an account name");
+  if(a)await change("finance_accounts",a.id,row);
+  else {
+   row.opening_balance=Number(val(f,"opening_balance"));
+   row.opening_date=val(f,"opening_date");
+   if(!Number.isFinite(row.opening_balance)||!row.opening_date)throw Error("Enter a valid opening balance and date");
+   await save("finance_accounts",row);
+  }
  });
 }
 function categoryEditor(){
