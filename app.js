@@ -184,7 +184,7 @@ function transactionEditor(t=null){
  const acct=activeAccounts().map(a=>({id:a.id,name:a.name})),kinds=[{id:"expense",name:"Expense"},{id:"income",name:"Income"},{id:"transfer",name:"Transfer"},{id:"adjustment",name:"Balance Adjustment"}];
  const cats=state.categories.map(c=>({id:c.id,name:c.name+" ("+c.kind+")"}));
  let existing=state.splits.filter(s=>s.transaction_id===t?.id),splitOpen=existing.length>0;
- const markup=selectField("Transaction Type","kind",kinds,t?.kind||"expense")+field("Amount","amount","number",t?.amount||"",'min="0.01" step="0.01" required')+'<div id="txFromAccount">'+selectField("Account","account_id",[{id:"",name:"Select account"},...acct],t?.account_id||"")+'</div><div id="txToAccount">'+selectField("To Account","destination_account_id",[{id:"",name:"Select destination"},...acct],t?.destination_account_id||"")+'</div><div id="txPayee">'+field("Payee","payee_name","text",t?.payee_name||"",'list="payees" maxlength=150')+'<datalist id="payees">'+alphabetic(state.payees).map(p=>'<option value="'+esc(p.name)+'">').join("")+'</datalist></div><div id="txCategory">'+selectField("Category","category_id",[{id:"",name:"Uncategorized"},...cats],t?.category_id||"")+'</div>'+field("Date","transaction_date","date",t?.transaction_date||today(),"required")+field("Notes","notes","text",t?.notes||"")+'<label class="flex" id="txSplitToggle"><input id="useSplit" type="checkbox" style="width:auto;margin:0" '+(splitOpen?"checked":"")+'> Split expense by category</label><div id="splitFields"></div>';
+ const markup=selectField("Transaction Type","kind",kinds,t?.kind||"expense")+field("Amount","amount","number",t?.amount||"",'min="0.01" step="0.01" required')+'<div id="txFromAccount">'+selectField("Account","account_id",[{id:"",name:"Select account"},...acct],t?.account_id||"")+'</div><div id="txToAccount">'+selectField("To Account","destination_account_id",[{id:"",name:"Select destination"},...acct],t?.destination_account_id||"")+'</div><div id="txPayee" class="payee-field">'+field("Payee","payee_name","text",t?.payee_name||"",'maxlength=150 autocomplete="off" aria-autocomplete="list" aria-controls="payeeSuggestions"')+'<div id="payeeSuggestions" class="payee-suggestions hidden" role="listbox" aria-label="Saved payees"></div>'</div><div id="txCategory">'+selectField("Category","category_id",[{id:"",name:"Uncategorized"},...cats],t?.category_id||"")+'</div>'+field("Date","transaction_date","date",t?.transaction_date||today(),"required")+field("Notes","notes","text",t?.notes||"")+'<label class="flex" id="txSplitToggle"><input id="useSplit" type="checkbox" style="width:auto;margin:0" '+(splitOpen?"checked":"")+'> Split expense by category</label><div id="splitFields"></div>';
  openEditor(t?"Edit Transaction":"Add Transaction",markup,async f=>{
  const kind=val(f,"kind"),amount=numeric(f,"amount"),account_id=val(f,"account_id"),dest=val(f,"destination_account_id"),split=$("#useSplit").checked;
  if(!amount)throw Error("Amount must be greater than zero");
@@ -198,6 +198,40 @@ function transactionEditor(t=null){
  if(t)await api(db.from("finance_transaction_splits").delete().eq("transaction_id",t.id));
  if(lines.length)await api(db.from("finance_transaction_splits").insert(lines.map(x=>({...x,user_id:uid(),transaction_id:tx.id}))));
  if(row.payee_name&&!state.payees.some(p=>p.name.toLowerCase()===row.payee_name.toLowerCase())){await save("finance_payees",{name:row.payee_name})}
+ });
+ const payeeInput=document.querySelector('#txPayee input[name="payee_name"]');
+ const payeeList=$("#payeeSuggestions");
+ const savedPayees=[...new Set([...state.payees.map(p=>p.name),...state.tx.map(x=>x.payee_name).filter(Boolean)].map(x=>x.trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{sensitivity:"base"}));
+ function suggestPayees(){
+  const query=payeeInput.value.trim().toLocaleLowerCase();
+  if(!query){payeeList.innerHTML="";payeeList.classList.add("hidden");return}
+  const matches=savedPayees.filter(name=>name.toLocaleLowerCase().startsWith(query)).slice(0,8);
+  payeeList.innerHTML=matches.map(name=>'<button type="button" role="option" class="payee-suggestion" data-payee-suggestion="'+esc(name)+'">'+esc(name)+'</button>').join("");
+  payeeList.classList.toggle("hidden",!matches.length);
+ }
+ payeeInput.addEventListener("input",suggestPayees);
+ payeeInput.addEventListener("focus",suggestPayees);
+ payeeInput.addEventListener("blur",()=>{setTimeout(()=>payeeList.classList.add("hidden"),150)});
+ payeeList.addEventListener("pointerdown",e=>e.preventDefault());
+ payeeList.addEventListener("click",e=>{
+  const suggestion=e.target.closest("[data-payee-suggestion]");
+  if(!suggestion)return;
+  payeeInput.value=suggestion.dataset.payeeSuggestion;
+  payeeList.classList.add("hidden");
+  payeeInput.focus();
+ });
+ payeeInput.addEventListener("keydown",e=>{
+  if(e.key==="Escape")payeeList.classList.add("hidden");
+  if(e.key==="ArrowDown"&&!payeeList.classList.contains("hidden")){e.preventDefault();payeeList.querySelector("button")?.focus()}
+ });
+ payeeList.addEventListener("keydown",e=>{
+  if(e.key==="Escape"){payeeList.classList.add("hidden");payeeInput.focus()}
+  if(e.key==="ArrowDown"||e.key==="ArrowUp"){
+   e.preventDefault();
+   const buttons=[...payeeList.querySelectorAll("button")],i=buttons.indexOf(document.activeElement);
+   if(e.key==="ArrowUp"&&i===0)payeeInput.focus();
+   else buttons[Math.max(0,Math.min(buttons.length-1,i+(e.key==="ArrowDown"?1:-1)))]?.focus();
+  }
  });
  const splitBox=$("#splitFields"),use=$("#useSplit");
  function splitLine(category_id="",amount=""){return '<div class="splitLine split">'+selectField("Category","unused",state.categories.filter(c=>c.kind==="expense").map(c=>({id:c.id,name:c.name})),category_id)+field("Amount","unused","number",amount,'min="0" step="0.01"')+'</div>'}
