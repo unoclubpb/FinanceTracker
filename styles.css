@@ -81,3 +81,9 @@ button.metric.account-filter:focus-visible{outline:3px solid #d7a849;outline-off
 button.payee-suggestion{display:block;width:100%;text-align:left;background:#fff;color:#14263d;font-size:16px;padding:11px 12px;font-weight:500;border-radius:7px}
 button.payee-suggestion+button.payee-suggestion{border-top:1px solid #edf0f5;border-radius:0}
 button.payee-suggestion:focus-visible,button.payee-suggestion:hover{background:#eef3f8;outline:none}
+
+/* v1.27: attach autocomplete menu directly beneath Payee input without shifting the form */
+#txPayee.payee-field{position:relative;z-index:5}
+#txPayee .payee-suggestions{position:absolute;top:calc(100% - 12px);left:0;right:0;margin:0;z-index:20;border:1px solid #9fb4c9;border-top:0;border-radius:0 0 10px 10px;box-shadow:0 8px 18px #14263d30;background:#fff;max-height:min(240px,35vh);overflow-y:auto;-webkit-overflow-scrolling:touch}
+#txPayee:has(.payee-suggestions:not(.hidden)) input[name="payee_name"]{border-radius:9px 9px 0 0;border-color:#9fb4c9}
+#txPayee .payee-suggestion{min-height:44px}
